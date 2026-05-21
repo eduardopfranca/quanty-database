@@ -1,27 +1,28 @@
+
 # Quanty Database
 
-Plataforma web para atualização e gestão de bases de dados financeiras a partir de múltiplos provedores de dados.
+Web platform for updating and managing financial databases from multiple data providers.
 
-Atualmente suporta:
+Currently supported:
 
-- **Varos** (B3, indicadores fundamentalistas, cotações)
+- **Varos** (B3 stocks, fundamental indicators, quotes)
 
-## Arquitetura
+## Architecture
 
-- **Frontend** (`apps/web`) — Next.js 14, hospedado no Vercel
-- **Worker** (`apps/worker`) — FastAPI em Python, hospedado no Render
-- **Banco de metadados e configs** — Supabase Postgres
-- **Storage de arquivos parquet** — Supabase Storage
+- **Frontend** (`apps/web`) — Next.js 14, hosted on Vercel
+- **Worker** (`apps/worker`) — FastAPI in Python, hosted on Render
+- **Metadata and config** — Supabase Postgres
+- **Parquet file storage** — Supabase Storage
 
-## Fluxo
+## Flow
 
-1. Usuário seleciona os fatores desejados na interface web
-2. Frontend dispara um job no worker
-3. Worker baixa os componentes brutos da Varos, calcula indicadores derivados (graham, EBIT_EV, ROIC, etc.)
-4. Worker salva os parquets no Supabase Storage e grava o relatório de completude no Postgres
-5. Frontend exibe o relatório de completude pro usuário
+1. User selects desired factors in the web interface
+2. Frontend dispatches a job to the worker
+3. Worker downloads raw components from Varos, computes derived factors (graham, ebit_ev, roic, etc.)
+4. Worker saves parquets to Supabase Storage and writes the completeness report to Postgres
+5. Frontend displays the completeness report to the user
 
-## Estrutura do repositório
+## Repository structure
 
 \`\`\`
 quanty-database/
@@ -29,19 +30,19 @@ quanty-database/
 │   ├── web/          # Next.js (Vercel)
 │   └── worker/       # FastAPI (Render)
 │       └── src/
-│           ├── providers/    # Abstração de provedores de dados
-│           ├── indicators/   # Cálculo de indicadores derivados
-│           ├── jobs/         # Pipeline de atualização
-│           └── storage/      # Integração com Supabase Storage
+│           ├── providers/    # Data provider abstraction
+│           ├── indicators/   # Derived factor computation
+│           ├── jobs/         # Update pipeline
+│           └── storage/      # Supabase Storage integration
 ├── .env.example
 ├── .gitignore
 └── README.md
 \`\`\`
 
-## Setup local
+## Local setup
 
-(documentação detalhada será adicionada conforme avançamos)
+(detailed documentation will be added as we progress)
 
 ## Status
 
-🚧 Em desenvolvimento — v1
+🚧 In development — v1
