@@ -43,4 +43,6 @@ desktop.ini
 *.parquet
 *.csv
 *.xlsx
-data/
+
+# Claude Code worktrees (local sandbox)
+.claude/
