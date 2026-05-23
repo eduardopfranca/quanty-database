@@ -9,7 +9,7 @@ The goal is to make the reasoning available to future contributors (including fu
 
 ## Architecture
 
-### 1. Worker runs locally, exposed via Cloudflare Tunnel
+### 1. Worker runs locally, exposed via tunnel
 
 **Context.** The worker downloads data from the Varos API and computes derived indicators. It must be reachable by the frontend hosted on Vercel.
 
@@ -17,9 +17,9 @@ The goal is to make the reasoning available to future contributors (including fu
 
 - Worker on Render Free (cloud, 512 MB RAM, cold start).
 - Worker on a VPS (~US$5/month).
-- Worker running locally on Eduardo's PC, exposed via Cloudflare Tunnel.
+- Worker running locally on Eduardo's PC, exposed via a tunnel.
 
-**Decision.** Local worker + tunnel.
+**Decision.** Local worker + tunnel (ngrok — see decision 19).
 
 **Trade-offs.** Zero recurring cost and full hardware resources, at the price of requiring Eduardo's machine to be online. Acceptable for internal use with three users.
 
@@ -104,13 +104,15 @@ The goal is to make the reasoning available to future contributors (including fu
 
 ## Stack
 
-### 9. `load_dotenv` for config, not pydantic-settings
+### 9. pydantic-settings for config
 
 **Context.** Settings module loads environment variables from `.env`.
 
-**Decision.** `python-dotenv` + a small `Settings` class.
+**Decision.** `pydantic-settings` `BaseSettings` with typed fields and directory auto-creation via `field_validator`.
 
-**Rationale.** Pydantic-settings adds dependency, decorators, and a class hierarchy for a feature that 30 lines of plain Python provide. Reverted to this after initial attempt with pydantic-settings.
+**History.** The original plan was `python-dotenv` + a plain `Settings` class (simpler dependency, ~30 lines). The implementation used `pydantic-settings` from the very first commit (`cdb4eb7`) and has been running correctly since. Eduardo decided to keep it: "if it's working, it stays."
+
+**Trade-offs.** Adds `pydantic-settings` as a dependency. In return, provides typed field parsing, `.env` file resolution, and `extra="ignore"` safety — features that the plain-`dotenv` approach would have reimplemented manually.
 
 ---
 
@@ -127,7 +129,7 @@ The goal is to make the reasoning available to future contributors (including fu
 - Worker: FastAPI + pandas + supabase-py.
 - Frontend: Next.js 14 (App Router) hosted on Vercel.
 - Metadata: Supabase Postgres.
-- Tunnel: Cloudflare Tunnel (free tier, stable `.cfargotunnel.com` URL).
+- Tunnel: ngrok (free tier, static `.ngrok-free.dev` domain — see decision 19).
 
 ---
 
@@ -166,6 +168,29 @@ The Varos API uses Portuguese names internally (e.g. `LPA`, `VPA`, `ValorDeMerca
 
 ---
 
+## Tunnel provider
+
+### 19. ngrok with static domain over Cloudflare Tunnel
+
+**Context.** The worker runs locally and needs a stable public HTTPS URL so the frontend (Vercel) and other HTTP clients can reach it without knowing Eduardo's home IP.
+
+**Options considered.**
+
+- **Cloudflare Tunnel** (originally chosen): previously offered a stable `.cfargotunnel.com` URL on the free tier. Policy changed — a fixed subdomain now requires a domain registered in the Cloudflare account. Eduardo does not want to buy a domain.
+- **ngrok free tier**: offers one static domain per account in the format `*.ngrok-free.dev`, no custom domain required.
+
+**Decision.** ngrok with static domain `chowder-marathon-slapping.ngrok-free.dev`.
+
+**Trade-offs accepted.**
+
+- ngrok is a single point of failure for the tunnel; if ngrok's free tier changes policy, the URL breaks (same risk that affected Cloudflare).
+- The domain name contains "ngrok-free" (aesthetic, not functional concern).
+- The ngrok authtoken gives access to create tunnels under Eduardo's account. It must never be committed to git (handled by `.gitignore`).
+
+**Validated.** End-to-end test on 2026-05-23: mobile phone on 5G → `GET /run-update/quotes` → 4,521,491 rows downloaded and saved in ~1m 43s.
+
+---
+
 ## Dropped ideas
 
 ### 16. No `update_jobs` table
@@ -183,3 +208,9 @@ Initial plan included a Storage bucket for parquet files. Dropped after egress c
 ### 18. No Pyodide or File System Access API
 
 Earlier brainstorm considered running computations in the browser (Pyodide) or reading the user's local folder via the File System Access API. Both dropped in favor of the worker-local-with-tunnel approach.
+
+---
+
+### 20. Cloudflare Zero Trust tunnel (abandoned)
+
+Tried on 2026-05-23. A Cloudflare Zero Trust account was created and a tunnel named `quanty-database-worker` was configured. Abandoned because Cloudflare's free tier no longer provides a stable subdomain without a domain registered in the account (policy changed). The account and the inert tunnel can be deleted at any time without impact to the project.

@@ -9,47 +9,46 @@ Currently supports:
 ## How it works
 
 1. User opens the web UI and selects the indicators to update.
-2. The frontend (Vercel) calls the worker (running on Eduardo's machine, exposed via Cloudflare Tunnel).
+2. The frontend (Vercel) calls the worker (running on Eduardo's machine, exposed via ngrok tunnel).
 3. The worker downloads the raw data from Varos, computes derived indicators, and writes parquet files to the local data folder.
 4. The user receives a download containing the updated parquets and a completeness report.
 5. Per-indicator statistics (last date, ticker count, etc.) are upserted to Supabase, so anyone can see the current state of the database from the UI.
 
 ## Architecture
 
-
-
-
+```
 ┌─────────────────┐     HTTPS      ┌──────────────────────┐
 │ Browser (any)   │ ─────────────> │  Vercel (Next.js 14) │
 └─────────────────┘                │  - UI                │
-│  - calls worker      │
-└──────────┬───────────┘
-│
-│ POST /run-update
-▼
-┌────────────────────────────────┐
-│   Cloudflare Tunnel (public)   │
-└────────────────┬───────────────┘
-│
-▼
-┌────────────────────────────────┐
-│  Worker (FastAPI, Python 3.11) │
-│  running on Eduardo's PC       │
-│  ─────────────────────────     │
-│  1. fetch raw from Varos       │
-│  2. normalize columns          │
-│  3. compute derived indicators │
-│  4. write parquet to disk      │
-│  5. upsert stats to Supabase   │
-└────────────────┬───────────────┘
-│
-┌─────────────────────┼──────────────────────┐
-▼                     ▼                      ▼
-┌──────────────┐      ┌──────────────────┐    ┌──────────────┐
-│   Varos API  │      │   Local folder   │    │   Supabase   │
-│  (B3 data)   │      │ (parquet files)  │    │  (metadata)  │
-└──────────────┘      └──────────────────┘    └──────────────┘
-
+                                   │  - calls worker      │
+                                   └──────────┬───────────┘
+                                              │
+                                              │ POST /run-update
+                                              ▼
+                                   ┌────────────────────────────────┐
+                                   │   ngrok tunnel (public)        │
+                                   │   chowder-marathon-            │
+                                   │   slapping.ngrok-free.dev      │
+                                   └────────────────┬───────────────┘
+                                                    │
+                                                    ▼
+                                   ┌────────────────────────────────┐
+                                   │  Worker (FastAPI, Python 3.11) │
+                                   │  running on Eduardo's PC       │
+                                   │  ─────────────────────────     │
+                                   │  1. fetch raw from Varos       │
+                                   │  2. normalize columns          │
+                                   │  3. compute derived indicators │
+                                   │  4. write parquet to disk      │
+                                   │  5. upsert stats to Supabase   │
+                                   └────────────────┬───────────────┘
+                                                    │
+                          ┌─────────────────────────┼──────────────────────┐
+                          ▼                         ▼                      ▼
+                 ┌──────────────┐      ┌──────────────────┐    ┌──────────────┐
+                 │   Varos API  │      │   Local folder   │    │   Supabase   │
+                 │  (B3 data)   │      │ (parquet files)  │    │  (metadata)  │
+                 └──────────────┘      └──────────────────┘    └──────────────┘
 ```
 
 ## Stack
@@ -57,13 +56,12 @@ Currently supports:
 - **Frontend**: Next.js 14 (App Router), hosted on Vercel — *not yet built*.
 - **Worker**: FastAPI + pandas + pyarrow + statsmodels, Python 3.11.
 - **Metadata**: Supabase Postgres (catalog of indicators + per-indicator stats).
-- **Tunnel**: Cloudflare Tunnel (free tier).
+- **Tunnel**: ngrok (free tier, static domain `chowder-marathon-slapping.ngrok-free.dev`).
 - **Data storage**: local parquet files (no cloud storage, no egress cost).
 
 ## Repository structure
 
 ```
-
 quanty-database/
 ├── README.md                   # this file
 ├── docs/
@@ -73,6 +71,8 @@ quanty-database/
 │   ├── worker/                 # Python worker (FastAPI)
 │   │   ├── requirements.txt
 │   │   └── src/
+│   │       ├── api.py          # FastAPI app and HTTP endpoints
+│   │       ├── main.py         # uvicorn entrypoint
 │   │       ├── config.py
 │   │       ├── logger.py
 │   │       ├── connections/    # data provider clients
@@ -81,10 +81,14 @@ quanty-database/
 │   │       │   ├── storage.py
 │   │       │   └── normalize.py
 │   │       └── compute/        # derived indicator calculations
+│   │           ├── graham.py
+│   │           ├── momentum_6m.py
+│   │           ├── volatility_252d.py
+│   │           ├── var_252d_95.py
+│   │           └── median_volume.py
 │   └── web/                    # Next.js frontend (not started)
 ├── .env.example
 └── .gitignore
-
 ```
 
 ## V1 indicators
@@ -96,6 +100,11 @@ Three macro / market references: `cdi`, `ibov`, `bova11`.
 Five derived indicators (computed locally): `graham`, `momentum_6m`, `volatility_252d`, `var_252d_95`, `median_volume`.
 
 ## Local setup
+
+### Prerequisites
+
+- Python 3.11 (install via `py -3.11 -m venv` or download from python.org)
+- [ngrok](https://ngrok.com/download) with a free account (provides one static domain per account)
 
 ### Worker
 
@@ -118,14 +127,25 @@ LOG_LEVEL=INFO
 LOG_DIR=./logs
 ```
 
-Validate each module standalone:
+Validate the environment:
 
 ```powershell
-python -m src.config
-python -m src.logger
-python -m src.data.storage
-python -m src.data.normalize
-python -m src.connections.varos
+python -m src.config       # prints 7 masked settings
+python -m src.logger       # writes INFO/WARNING/ERROR to console and file
+python -m src.data.storage # saves/loads/lists a dummy DataFrame
+python -m src.connections.varos  # hits Varos API, returns raw DataFrames
+```
+
+Start the worker:
+
+```powershell
+python -m src.main
+```
+
+Start the ngrok tunnel (separate terminal):
+
+```powershell
+ngrok http --url=chowder-marathon-slapping.ngrok-free.dev 8000
 ```
 
 ### Frontend
