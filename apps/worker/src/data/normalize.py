@@ -38,8 +38,8 @@ def varos_quotes(df: pd.DataFrame) -> pd.DataFrame:
     for col in ("open", "high", "average", "low"):
         df[f"{col}_adjusted"] = df[col] * df["adjustment_factor"]
 
+    df.loc[df["close_adjusted"] <= 0, "close_adjusted"] = pd.NA
     df["close_adjusted"] = df.groupby("ticker")["close_adjusted"].transform("ffill")
-    df = df.sort_values("date", ascending=True).reset_index(drop=True)
 
     return df
 
