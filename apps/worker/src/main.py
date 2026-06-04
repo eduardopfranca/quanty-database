@@ -3,7 +3,7 @@
 Run with:
     python -m src.main
 
-The host 0.0.0.0 is required so the Cloudflare Tunnel can reach the
+The host 0.0.0.0 is required so the ngrok tunnel can reach the
 server. The port is fixed at 8000.
 """
 import uvicorn

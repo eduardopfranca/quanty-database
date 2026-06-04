@@ -55,13 +55,15 @@ The goal is to make the reasoning available to future contributors (including fu
 
 ---
 
-### 4. Supabase used only for metadata
+### 4. Supabase used only for metadata *(superseded by decision 21)*
 
 **Context.** Need a place for the indicator catalog and update statistics.
 
 **Decision.** Supabase Postgres holds two tables: `indicators` (catalog) and `indicator_stats` (per-indicator stats). All raw and derived data lives as local parquet.
 
 **Trade-offs.** No central source of truth for the data itself; each user receives their own copy on demand.
+
+*Superseded 2026-05-28: Supabase removed from the project. See decision 21.*
 
 ---
 
@@ -126,9 +128,9 @@ The goal is to make the reasoning available to future contributors (including fu
 
 ### 11. Stack summary
 
-- Worker: FastAPI + pandas + supabase-py.
+- Worker: FastAPI + pandas.
 - Frontend: Next.js 14 (App Router) hosted on Vercel.
-- Metadata: Supabase Postgres.
+- Metadata: local (parquet mtimes for cooldown; catalog TBD in Phase 3.4 — see decision 21).
 - Tunnel: ngrok (free tier, static `.ngrok-free.dev` domain — see decision 19).
 
 ---
@@ -195,7 +197,7 @@ The Varos API uses Portuguese names internally (e.g. `LPA`, `VPA`, `ValorDeMerca
 
 ### 16. No `update_jobs` table
 
-Originally planned to track each update execution. Dropped — synchronous response carries the report directly to the caller. The execution timestamp is captured in `indicator_stats.updated_at`.
+Originally planned to track each update execution. Dropped — synchronous response carries the report directly to the caller. The execution timestamp was originally intended for `indicator_stats.updated_at`; after Supabase was removed (decision 21), the cooldown uses the local parquet mtime instead.
 
 ---
 
@@ -214,3 +216,22 @@ Earlier brainstorm considered running computations in the browser (Pyodide) or r
 ### 20. Cloudflare Zero Trust tunnel (abandoned)
 
 Tried on 2026-05-23. A Cloudflare Zero Trust account was created and a tunnel named `quanty-database-worker` was configured. Abandoned because Cloudflare's free tier no longer provides a stable subdomain without a domain registered in the account (policy changed). The account and the inert tunnel can be deleted at any time without impact to the project.
+
+---
+
+## Supabase removal
+
+### 21. Supabase removed; metadata moves local
+
+**Context.** During the 2026-05-28 session, the cooldown check attempted to query `indicator_stats.updated_at` from Supabase. The table was empty (nothing had ever populated it), and the column name used in the query was wrong. Investigating the real schema would have required writing a probe request to an external service. Eduardo rejected that approach.
+
+**Decision.** Supabase removed from the project. Specifically:
+- `supabase-py` removed from `requirements.txt`.
+- `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` removed from `config.py` and `.env.example`.
+- Cooldown now reads the local parquet mtime (`Path.stat().st_mtime`) via `storage.get_indicator_path()` and `storage.indicator_exists()`. No network call required.
+- The `indicators` catalog (14 rows) remains in Supabase but is not used by any current code. It will be migrated to a local form (file format TBD) in Phase 3.4.
+
+**Trade-offs.**
+- No shared metadata: the worker's state (when an indicator was last updated) is visible only on Eduardo's machine. Acceptable for the current 3-user, PC-as-server setup.
+- Catalog migration to local is deferred. Until Phase 3.4 ships, there is no catalog lookup in the worker code — the `quotes` endpoint is still hardcoded.
+- The actual Supabase project (`quanty-database`, region SP) remains intact and can be reconnected if requirements change.
