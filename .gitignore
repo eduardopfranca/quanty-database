@@ -39,10 +39,14 @@ yarn-error.log*
 Thumbs.db
 desktop.ini
 
-# Data files (não comitar dados, eles vivem no Supabase Storage)
+# Data files (kept local in WORKER_DATA_DIR, never committed)
 *.parquet
 *.csv
 *.xlsx
 
 # Claude Code worktrees (local sandbox)
 .claude/
+
+# Worker process output
+apps/worker/worker_stdout.txt
+apps/worker/worker_stderr.txt
