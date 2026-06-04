@@ -20,12 +20,11 @@ class Settings(BaseSettings):
 
     # External services
     varos_api_key: str = Field(..., description="API key for Varos provider")
-    supabase_url: str = Field(..., description="Supabase project URL")
-    supabase_service_role_key: str = Field(..., description="Supabase service role key")
 
     # Worker
     worker_secret: str = Field(..., description="Shared secret for worker API auth")
     worker_data_dir: Path = Field(..., description="Local folder where parquet files are written")
+    update_cooldown_hours: int = Field(default=6, description="Minimum hours between updates for the same indicator")
 
     # Logging
     log_level: str = Field(default="INFO", description="Logging level")
@@ -57,9 +56,8 @@ if __name__ == "__main__":
 
     print("Worker settings loaded:\n")
     print(f"  varos_api_key:             {_mask(settings.varos_api_key)}")
-    print(f"  supabase_url:              {settings.supabase_url}")
-    print(f"  supabase_service_role_key: {_mask(settings.supabase_service_role_key)}")
     print(f"  worker_secret:             {_mask(settings.worker_secret)}")
     print(f"  worker_data_dir:           {settings.worker_data_dir}")
     print(f"  log_level:                 {settings.log_level}")
     print(f"  log_dir:                   {settings.log_dir}")
+    print(f"  update_cooldown_hours:     {settings.update_cooldown_hours}")

@@ -20,8 +20,5 @@ python-dotenv==1.0.1
 pydantic==2.10.3
 pydantic-settings==2.6.1
 
-# Supabase client
-supabase==2.10.0
-
 # Logging & utilities
 python-json-logger==2.0.7
