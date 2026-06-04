@@ -83,7 +83,7 @@ The goal is to make the reasoning available to future contributors (including fu
 
 **Decision.**
 
-- Raw tabular indicators: a single download function parameterized by name. Adding a new raw indicator is a single row in the Supabase `indicators` table — no code change.
+- Raw tabular indicators: a single download function parameterized by name. Adding a new raw indicator is a single row in the indicator catalog — no code change. (The catalog lived in Supabase; after decision 21 it moves to a local form, TBD in Phase 3.4.)
 - Derived indicators: one file per indicator in `compute/`.
 
 **Trade-offs.** Avoids duplicating download code for raw indicators while keeping derived math clearly separated.
@@ -145,10 +145,11 @@ The goal is to make the reasoning available to future contributors (including fu
 
 ### 13. Indicator names in English
 
-**Decision.** The 11 v1 indicators are named:
+**Decision.** v1 covers 11 indicators plus 3 macro references (14 named series), all in English:
 
-- Raw: `quotes`, `market_cap`, `roic`, `ebit_ev`, `eps`, `bvps`, `cdi`, `ibov`, `bova11`
-- Derived: `graham`, `momentum_6m`, `volatility_252d`, `var_252d_95`, `median_volume`
+- Raw indicators (6): `quotes`, `market_cap`, `roic`, `ebit_ev`, `eps`, `bvps`
+- Macro references (3): `cdi`, `ibov`, `bova11`
+- Derived (5): `graham`, `momentum_6m`, `volatility_252d`, `var_252d_95`, `median_volume`
 
 The Varos API uses Portuguese names internally (e.g. `LPA`, `VPA`, `ValorDeMercado`). The mapping happens in the catalog layer.
 
@@ -226,12 +227,14 @@ Tried on 2026-05-23. A Cloudflare Zero Trust account was created and a tunnel na
 **Context.** During the 2026-05-28 session, the cooldown check attempted to query `indicator_stats.updated_at` from Supabase. The table was empty (nothing had ever populated it), and the column name used in the query was wrong. Investigating the real schema would have required writing a probe request to an external service. Eduardo rejected that approach.
 
 **Decision.** Supabase removed from the project. Specifically:
+
 - `supabase-py` removed from `requirements.txt`.
 - `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` removed from `config.py` and `.env.example`.
 - Cooldown now reads the local parquet mtime (`Path.stat().st_mtime`) via `storage.get_indicator_path()` and `storage.indicator_exists()`. No network call required.
 - The `indicators` catalog (14 rows) remains in Supabase but is not used by any current code. It will be migrated to a local form (file format TBD) in Phase 3.4.
 
 **Trade-offs.**
+
 - No shared metadata: the worker's state (when an indicator was last updated) is visible only on Eduardo's machine. Acceptable for the current 3-user, PC-as-server setup.
 - Catalog migration to local is deferred. Until Phase 3.4 ships, there is no catalog lookup in the worker code — the `quotes` endpoint is still hardcoded.
 - The actual Supabase project (`quanty-database`, region SP) remains intact and can be reconnected if requirements change.
