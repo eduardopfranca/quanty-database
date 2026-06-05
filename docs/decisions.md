@@ -238,3 +238,30 @@ Tried on 2026-05-23. A Cloudflare Zero Trust account was created and a tunnel na
 - No shared metadata: the worker's state (when an indicator was last updated) is visible only on Eduardo's machine. Acceptable for the current 3-user, PC-as-server setup.
 - Catalog migration to local is deferred. Until Phase 3.4 ships, there is no catalog lookup in the worker code — the `quotes` endpoint is still hardcoded.
 - The actual Supabase project (`quanty-database`, region SP) remains intact and can be reconnected if requirements change.
+
+
+---
+## Catalog
+
+### 22. Local indicator catalog as a provider→kind dict
+
+**Context.** Phase 3.4 needed a local form for the indicator catalog (the registry mapping each indicator name to how it is fetched or computed). Decision 21 removed Supabase and left the form open. The catalog must scale toward many indicators and, eventually, multiple providers — without per-indicator code or becoming a flat mess.
+
+**Options considered.**
+
+- SQLite table — queryable, but a database for read-only static config, and it reverses the simplification of decision 21.
+- JSON file — data/code split and frontend-editable, but forces a string→function dispatch and separates the data from the resolver code.
+- Python dict module (`src/catalog.py`).
+
+**Decision.** A Python dict in `src/catalog.py`, organized as `CATALOG[provider][kind][name]`. The catalog holds **data only**; turning an entry into fetch/normalize/compute calls is the orchestrator's job (Phase 3.5). Key points:
+
+- Per-indicator **data** is separated from per-(provider, kind) **logic**. Raw fundamentals share one fetch path + normalizer, so each is a single data row (Varos code + `data_type`, no code). Derived `compute` is resolved by convention (`src/compute/<name>.py`). Macro and the bulk quotes are bespoke (own fetch method + normalizer).
+- `provider` and `kind` come from position in the nesting, not repeated per entry.
+- Names must be unique (a build-time index raises on collision) — the tripwire for adding provider-qualified lookup when a second provider arrives.
+
+**Trade-offs accepted.**
+
+- The catalog stores strings (method/normalizer names), resolved later via `getattr`/`importlib`, instead of direct function references. Deliberate: it keeps the module import-light and lets the bulk of indicators (raw fundamentals) be pure data rows, which is what scales.
+- Static config lives in code, so a non-dev cannot add an indicator. Acceptable: adding a derived needs code anyway, and the frontend gets the catalog via a worker endpoint, not by reading the file.
+- Multi-provider machinery (per-provider adapters, splitting into a `catalog/` package) is intentionally not built yet; the structure accommodates it without rework.
+---
