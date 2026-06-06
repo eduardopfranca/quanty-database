@@ -9,9 +9,9 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 
+from src import catalog, runner
 from src.config import settings
-from src.connections.varos import VarosClient
-from src.data import normalize, storage
+from src.data import storage
 from src.logger import get_logger
 
 logger = get_logger("worker.api")
@@ -71,36 +71,50 @@ def health() -> dict:
     return {"status": "ok"}
 
 
-@app.post("/run-update/quotes")
-async def run_update_quotes(
+@app.post("/run-update/{indicator_name}")
+async def run_update(
+    indicator_name: str,
     _: Annotated[None, Depends(verify_worker_secret)],
 ) -> dict:
-    """Fetch quotes from Varos, normalize, save to parquet, return summary.
+    """Produce one indicator and save its parquet, returning a summary.
 
-    Guards (in order): POST-only, X-Worker-Secret auth (401), cooldown via
-    parquet mtime (409), per-indicator asyncio lock (409 if busy).
+    `indicator_name` must exist in the catalog. The runner resolves the
+    catalog entry: fetched kinds (macro, raw_bulk, raw_fundamental) fetch +
+    normalize; derived kinds load their dependencies from disk and compute.
+
+    Guards (in order): X-Worker-Secret auth (401), catalog membership (404),
+    cooldown via parquet mtime (409), per-indicator asyncio lock (409 if busy).
+    A derived indicator with a missing dependency on disk returns 422 (rigid
+    policy: dependencies are not auto-fetched). Any other failure returns 500.
     """
-    _check_cooldown("quotes")
+    try:
+        catalog.get(indicator_name)
+    except KeyError:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown indicator '{indicator_name}'. Known: {catalog.all_names()}",
+        )
 
-    lock = _get_lock("quotes")
+    _check_cooldown(indicator_name)
+
+    lock = _get_lock(indicator_name)
     if lock.locked():
-        raise HTTPException(status_code=409, detail="Update already running for indicator 'quotes'")
+        raise HTTPException(
+            status_code=409,
+            detail=f"Update already running for indicator '{indicator_name}'",
+        )
 
     await lock.acquire()
     try:
-        logger.info("Starting quotes update")
-        client = VarosClient()
-        raw = client.fetch_quotes()
-        df = normalize.varos_quotes(raw)
-        path = storage.save_indicator("quotes", df)
-        logger.info(f"Quotes update complete: {len(df)} rows saved to {path}")
-        return {
-            "indicator": "quotes",
-            "rows": len(df),
-            "path": str(path),
-        }
+        logger.info(f"Starting update for '{indicator_name}'")
+        summary = runner.run_indicator(indicator_name)
+        logger.info(f"Update complete for '{indicator_name}': {summary['rows']} rows saved")
+        return summary
+    except FileNotFoundError as e:
+        logger.warning(f"Update for '{indicator_name}' failed: missing dependency")
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
-        logger.exception("Quotes update failed")
+        logger.exception(f"Update for '{indicator_name}' failed")
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         lock.release()
