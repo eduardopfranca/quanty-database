@@ -14,7 +14,8 @@ NOT auto-fetch dependencies. In v1 the dependency graph is one level deep
 (derived depend only on raw), so no recursion or ordering is needed.
 
 The catalog holds only data (src/catalog.py); turning an entry into actual
-fetch/normalize/compute calls is this module's job.
+fetch/normalize/compute calls is this module's job. Storage is namespaced by
+provider, so the provider (from the catalog entry) is passed to storage.
 """
 import importlib
 
@@ -45,7 +46,11 @@ def run_indicator(name: str) -> dict:
     _logger.info(f"Running indicator '{name}' (kind={kind})")
 
     if kind == "derived":
-        deps = [storage.load_indicator(dep) for dep in entry["depends_on"]]
+        # Each dependency is loaded from its own provider's folder.
+        deps = [
+            storage.load_indicator(dep, catalog.get(dep)["provider"])
+            for dep in entry["depends_on"]
+        ]
         compute = importlib.import_module(f"src.compute.{name}").compute
         df = compute(*deps)
     else:
@@ -60,7 +65,7 @@ def run_indicator(name: str) -> dict:
             raw = getattr(client, entry["fetch"])()
             df = getattr(normalize, entry["normalizer"])(raw)
 
-    path = storage.save_indicator(name, df)
+    path = storage.save_indicator(name, df, entry["provider"])
     _logger.info(f"Indicator '{name}' done: {len(df)} rows -> {path}")
     return {"indicator": name, "kind": kind, "rows": len(df), "path": str(path)}
 

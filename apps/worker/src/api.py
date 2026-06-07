@@ -36,16 +36,16 @@ def verify_worker_secret(
         raise HTTPException(status_code=401, detail="Invalid or missing X-Worker-Secret header")
 
 
-def _check_cooldown(indicator_name: str) -> None:
+def _check_cooldown(indicator_name: str, provider: str) -> None:
     """Raise 409 if the indicator parquet was written within the cooldown window.
 
     Uses the local parquet mtime as the last-updated timestamp. If the file
     does not exist yet, there is no cooldown (first run is always allowed).
     """
-    if not storage.indicator_exists(indicator_name):
+    if not storage.indicator_exists(indicator_name, provider):
         return
 
-    path = storage.get_indicator_path(indicator_name)
+    path = storage.get_indicator_path(indicator_name, provider)
     mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
     now = datetime.now(timezone.utc)
     elapsed = now - mtime
@@ -88,14 +88,14 @@ async def run_update(
     policy: dependencies are not auto-fetched). Any other failure returns 500.
     """
     try:
-        catalog.get(indicator_name)
+        entry = catalog.get(indicator_name)
     except KeyError:
         raise HTTPException(
             status_code=404,
             detail=f"Unknown indicator '{indicator_name}'. Known: {catalog.all_names()}",
         )
 
-    _check_cooldown(indicator_name)
+    _check_cooldown(indicator_name, entry["provider"])
 
     lock = _get_lock(indicator_name)
     if lock.locked():
