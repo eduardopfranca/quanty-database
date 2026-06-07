@@ -50,3 +50,6 @@ desktop.ini
 # Worker process output
 apps/worker/worker_stdout.txt
 apps/worker/worker_stderr.txt
+
+# Generated diagrams (kept local until the flow they show is built)
+docs/*.svg
