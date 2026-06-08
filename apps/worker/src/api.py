@@ -9,7 +9,7 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 
-from src import catalog, runner, status
+from src import catalog, reports, runner, status
 from src.config import settings
 from src.data import storage
 from src.logger import get_logger
@@ -76,6 +76,18 @@ def get_status() -> list[dict]:
     """Cheap, instant status for every catalog indicator (no data scan)."""
     logger.info("Status requested")
     return status.all_status()
+
+
+@app.get("/report/{indicator_name}")
+def get_report(indicator_name: str) -> dict:
+    """On-demand full report for one indicator (scans its parquet)."""
+    try:
+        return reports.indicator_report(indicator_name)
+    except KeyError:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown indicator '{indicator_name}'. Known: {catalog.all_names()}",
+        )
 
 
 @app.post("/run-update/{indicator_name}")
