@@ -71,7 +71,8 @@ def varos_cdi(df: pd.DataFrame) -> pd.DataFrame:
     Normalize the historical CDI rate.
 
     Drops auxiliary columns, renames 'data' to 'date' and 'valor' to
-    'return', divides 'return' by 100 (Varos returns it as a percentage).
+    'return', divides 'return' by 100 (Varos returns it as a percentage),
+    and parses 'date' to datetime for a consistent type across indicators.
     """
     df = df.copy()
 
@@ -81,6 +82,7 @@ def varos_cdi(df: pd.DataFrame) -> pd.DataFrame:
 
     df = df.rename(columns={"data": "date", "valor": "return"})
     df["return"] = df["return"] / 100
+    df["date"] = pd.to_datetime(df["date"])
     df = df.sort_values("date", ascending=True).reset_index(drop=True)
 
     return df
@@ -90,8 +92,9 @@ def varos_ibov(df: pd.DataFrame) -> pd.DataFrame:
     """
     Normalize the historical IBOV index series.
 
-    Renames 'data' to 'date' and 'valor' to 'close', drops the
-    'indice' column.
+    Renames 'data' to 'date' and 'valor' to 'close', drops the 'indice'
+    column, and parses 'date' to datetime for a consistent type across
+    indicators.
     """
     df = df.copy()
 
@@ -100,6 +103,7 @@ def varos_ibov(df: pd.DataFrame) -> pd.DataFrame:
     if "indice" in df.columns:
         df = df.drop(columns=["indice"])
 
+    df["date"] = pd.to_datetime(df["date"])
     df = df.sort_values("date", ascending=True).reset_index(drop=True)
 
     return df
