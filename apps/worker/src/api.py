@@ -82,6 +82,7 @@ def get_status() -> list[dict]:
 async def run_update(
     indicator_name: str,
     _: Annotated[None, Depends(verify_worker_secret)],
+    force: bool = False,
 ) -> dict:
     """Produce one indicator and save its parquet, returning a summary.
 
@@ -90,9 +91,13 @@ async def run_update(
     normalize; derived kinds load their dependencies from disk and compute.
 
     Guards (in order): X-Worker-Secret auth (401), catalog membership (404),
-    cooldown via parquet mtime (409), per-indicator asyncio lock (409 if busy).
-    A derived indicator with a missing dependency on disk returns 422 (rigid
-    policy: dependencies are not auto-fetched). Any other failure returns 500.
+    freshness (409 if already fresh), cooldown via parquet mtime (409),
+    per-indicator asyncio lock (409 if busy). A derived indicator with a
+    missing dependency on disk returns 422 (rigid policy: dependencies are
+    not auto-fetched). Any other failure returns 500.
+
+    `force=true` bypasses the freshness and cooldown checks (but never auth
+    or the concurrency lock) — use it to re-produce an indicator on demand.
     """
     try:
         entry = catalog.get(indicator_name)
@@ -102,7 +107,18 @@ async def run_update(
             detail=f"Unknown indicator '{indicator_name}'. Known: {catalog.all_names()}",
         )
 
-    _check_cooldown(indicator_name, entry["provider"])
+    if not force:
+        current = status.indicator_status(indicator_name)
+        if current.get("fresh"):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Indicator '{indicator_name}' is already fresh "
+                    f"(last_date {current['last_date']} reaches the target {status.freshness_target()}). "
+                    f"Pass force=true to update anyway."
+                ),
+            )
+        _check_cooldown(indicator_name, entry["provider"])
 
     lock = _get_lock(indicator_name)
     if lock.locked():
@@ -113,7 +129,7 @@ async def run_update(
 
     await lock.acquire()
     try:
-        logger.info(f"Starting update for '{indicator_name}'")
+        logger.info(f"Starting update for '{indicator_name}'{' (forced)' if force else ''}")
         summary = runner.run_indicator(indicator_name)
         logger.info(f"Update complete for '{indicator_name}': {summary['rows']} rows saved")
         return summary
