@@ -53,7 +53,7 @@ Currently supports:
 
 - **Frontend**: Next.js 14 (App Router), hosted on Vercel — *not yet built*.
 - **Worker**: FastAPI + pandas + pyarrow + statsmodels, Python 3.11.
-- **Metadata**: local — cooldown tracked via parquet mtime; indicator catalog TBD in Phase 3.4.
+- **Metadata**: local — indicator catalog in `src/catalog.py`; per-indicator state (`updated_at`, `rows`, `last_date`) derived on demand from parquet mtime and footer via `GET /status`.
 - **Tunnel**: ngrok (free tier, static domain `chowder-marathon-slapping.ngrok-free.dev`).
 - **Data storage**: local parquet files (no cloud storage, no egress cost).
 
@@ -72,9 +72,13 @@ quanty-database/
 │       └── src/
 │           ├── __init__.py
 │           ├── api.py               # FastAPI app + endpoints + guards
+│           ├── business_days.py     # Mon–Fri business-day calendar
+│           ├── catalog.py           # static indicator registry (provider→kind→name)
 │           ├── config.py            # pydantic-settings BaseSettings
 │           ├── logger.py            # get_logger() factory
 │           ├── main.py              # Uvicorn entrypoint (0.0.0.0:8000)
+│           ├── runner.py            # orchestrator: fetch/compute/save one indicator
+│           ├── status.py            # derive per-indicator state from parquets
 │           ├── compute/             # one file per derived indicator
 │           │   ├── __init__.py
 │           │   ├── graham.py
@@ -95,8 +99,11 @@ quanty-database/
     └── retrospectives/              # per-session retrospectives
         ├── README.md
         ├── _template.md
-        └── 2026-05-28-remove-supabase-and-fix-cooldown.md
+        ├── 2026-05-28-remove-supabase-and-fix-cooldown.md
+        └── 2026-06-08-storage-provider-namespacing-and-status.md
 ```
+
+Data lives outside the repo at `WORKER_DATA_DIR/{provider}/{name}.parquet` (currently `C:/Users/eduar/code/quanty-data/varos/`).
 
 ## V1 indicators
 

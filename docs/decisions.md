@@ -67,6 +67,100 @@ The goal is to make the reasoning available to future contributors (including fu
 
 ---
 
+### 23. Worker data folder is a dedicated exclusive folder outside the repo
+
+**Context.** Worker output used to land in `C:/Users/eduar/code/quanty_environment/database_fintz/data/factor_db`, a folder shared with the legacy notebook workflow. Two problems: (1) when another process can write to the same files, the parquet mtime is not a reliable "last updated" signal; (2) the data location is coupled to the legacy notebook, creating unintended dependencies.
+
+**Options considered.**
+
+- Keep the shared `database_fintz/factor_db` folder.
+- Store inside the repo (gitignored).
+- Dedicated folder outside the repo, exclusive to the worker.
+
+**Decision.** Dedicated exclusive folder outside the repo: `WORKER_DATA_DIR = C:/Users/eduar/code/quanty-data`, driven by `.env`. Inside-repo rejected: a `git clean -fdx` would wipe gitignored data and couples the data location to the code checkout.
+
+**Trade-offs accepted.**
+
+- The path must be explicitly set in `.env` — there is no default. Acceptable for a single-machine setup.
+- Key benefit: because the folder is exclusive to the worker, the parquet file mtime becomes a reliable "last updated" signal and no separate state store is needed for that (see decision 26).
+
+---
+
+### 24. Parquet storage namespaced by provider
+
+**Context.** The catalog carries a `provider` per indicator (currently only `varos`). A multi-provider future is anticipated. Flat storage (`WORKER_DATA_DIR/{name}.parquet`) would collide if two providers produced an indicator with the same name.
+
+**Options considered.**
+
+- Flat: `WORKER_DATA_DIR/{name}.parquet`.
+- Namespaced by provider: `WORKER_DATA_DIR/{provider}/{name}.parquet`.
+- Namespaced by provider and kind (e.g. a `derived/` subfolder within each provider).
+
+**Decision.** `WORKER_DATA_DIR/{provider}/{name}.parquet`. `storage.py` accepts a `provider` argument and remains pure I/O; `runner` and `api` pass the provider from the catalog entry. Within a provider folder, storage stays flat — no kind subfolders. Derived indicators live under their source provider (e.g. `varos/`) because they are computed from that provider's data.
+
+**Trade-offs accepted.**
+
+- Callers must pass `provider` to every `storage.*` call. The catalog entry always carries it, so no extra lookup is needed.
+- A per-kind subfolder split (e.g. `varos/derived/`) was deliberately not done: it would open a fuller folder taxonomy question that is better answered when fill/merge stages are built. See decision 25.
+
+---
+
+### 25. Data-layout vision: per-provider raw folders now; fill/merge taxonomy deferred
+
+**Context.** The future pipeline will have raw data per provider, fill/merge transformation stages, and strategy-ready outputs (e.g. a `factor_db`). Designing the full folder structure upfront requires knowing what fill/merge looks like — which is not yet built.
+
+**Decision.** Current state: `WORKER_DATA_DIR/{provider}/{name}.parquet` (per-provider raw). Vision (not yet built): provider-raw folders → fill/merge stages → strategy-ready outputs, possibly produced by an API-triggered process or notebook. The real stage/fill folder taxonomy is deliberately deferred to when forward-fill (the first transformation stage) is built, because derived/filled/merged placement is non-trivial and is best designed against a concrete transformation.
+
+**Trade-offs accepted.** Deferring means no folder structure commitment yet. The risk of premature structure is higher than the cost of renaming folders when fill is concrete.
+
+---
+
+### 26. Per-indicator state derived from parquet files; no separate store
+
+**Context.** The frontend needs per-indicator state: when an indicator was last updated, the latest date in its data, and its row count. Options are a separate store (SQLite / JSON) updated after each run, or deriving state on demand from the parquets.
+
+**Options considered.**
+
+- A separate state store (SQLite or JSON sidecar) written on each successful run.
+- Derive on demand from the parquets themselves.
+
+**Decision.** Derive on demand — `updated_at` from file mtime, row count from the parquet footer (cheap metadata read, no data scan), `last_date` from the `date` column (single-column read). Exposed via `GET /status` (`src/status.py`). No separate store. Enabled by: (1) the exclusive data folder (decision 23) makes mtime reliable; (2) no forward-fill in the pipeline means a parquet's max date equals the actual last date in the data. Each future fill stage will be its own parquet whose mtime and max date **are** that stage's state, so the model holds as providers and stages are added.
+
+**Trade-offs accepted.**
+
+- The mtime assumption holds only as long as the data folder remains exclusive to the worker. If another process writes to the folder, mtime becomes unreliable.
+- Heavier per-day ticker statistics require a full data scan and are not in `GET /status` — see decision 28.
+
+---
+
+### 27. Freshness target: up to the previous business day
+
+**Context.** The fund needs data updated through the last business day before today. "Fresh" must be defined precisely so the Phase 3.6c freshness gate can decide whether a re-fetch is needed.
+
+**Decision.** An indicator is "fresh" when its `last_date >= business_days.last_business_day(date.today() - timedelta(days=1))` — i.e., its data covers at least through the most recent business day strictly before today. The business-day calendar is Mon–Fri for now (`src/business_days.py`); B3 holidays will be added there when needed, and every call site benefits automatically.
+
+**Note.** Some sources lag (e.g. CDI's latest date trailed the other indicators). An indicator can sit behind the freshness target with no newer data available at the source; the Phase 3.6c freshness gate must not loop forever asking to update such indicators.
+
+**Trade-offs accepted.** "Strictly before today" means today's data is never declared stale on the day it is produced — the gate waits until the following calendar day. This is the correct behavior for an overnight batch process.
+
+---
+
+### 28. Heavier ticker statistics live in a separate on-demand report
+
+**Context.** `GET /status` must respond instantly without reading parquet data. The desired per-indicator ticker metrics — mean and median tickers per day, tickers on the latest day, total distinct tickers — require a full column scan and cannot be derived from file metadata.
+
+**Options considered.**
+
+- Include ticker stats in `GET /status` (blocks on a full data scan).
+- Compute at produce-time and cache in the parquet's own footer metadata.
+- Expose in a separate on-demand endpoint or report.
+
+**Decision.** `GET /status` carries only cheap metadata-derived fields (mtime, row count from parquet footer, `last_date` from a single-column read). The four ticker metrics go in a separate on-demand per-indicator report, to be built later. The "always-on-hand" footer-metadata approach is to be revisited when that part is built — it may become the preferred design if the per-indicator report proves too slow.
+
+**Trade-offs accepted.** Callers wanting ticker stats must make a separate, slower request. Acceptable: the only current consumers are the frontend (not yet built) and ad-hoc monitoring.
+
+---
+
 ## Code organization
 
 ### 5. Subfolders by domain inside `src/`
