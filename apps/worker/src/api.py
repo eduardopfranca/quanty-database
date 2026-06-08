@@ -9,7 +9,7 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 
-from src import catalog, runner
+from src import catalog, runner, status
 from src.config import settings
 from src.data import storage
 from src.logger import get_logger
@@ -69,6 +69,13 @@ def health() -> dict:
     """Liveness check. Returns a constant payload."""
     logger.info("Health check called")
     return {"status": "ok"}
+
+
+@app.get("/status")
+def get_status() -> list[dict]:
+    """Cheap, instant status for every catalog indicator (no data scan)."""
+    logger.info("Status requested")
+    return status.all_status()
 
 
 @app.post("/run-update/{indicator_name}")
