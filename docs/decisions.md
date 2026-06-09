@@ -161,6 +161,24 @@ The goal is to make the reasoning available to future contributors (including fu
 
 ---
 
+### 29. Single-indicator download via an authenticated endpoint
+
+**Context.** Consumers — analysts and the future frontend — need the parquet files on their own machines after an update run.
+
+**Options considered.**
+
+- Serve files from a shared location (cloud storage, Supabase Storage, etc.).
+- A dedicated worker endpoint that streams the parquet directly.
+
+**Decision.** `GET /download/{indicator_name}` streams the indicator's parquet as a file download (`FastAPI.FileResponse`, `Content-Disposition: attachment`). It requires the `X-Worker-Secret` header — unlike `GET /status` and `GET /report` (open metadata endpoints), `/download` serves the actual proprietary data. Auth is via **header only, never a query-string token**: secrets in URLs appear in server access logs, browser history, and referrer headers. Returns 404 for unknown indicators or indicators not yet produced.
+
+**Trade-offs accepted.**
+
+- A plain browser `GET` cannot easily add a custom header, so ad-hoc downloads go through `/docs` (the FastAPI Swagger UI) or the future frontend (which will proxy the request server-side). Acceptable for an internal tool with a small user base.
+- Batch download (a zip of all indicators + a status manifest) is the logical next step (Phase 3.7b) and is deliberately deferred: over the ngrok free tier, a full bundle — the `quotes` parquet alone is on the order of hundreds of MB — is a real bandwidth concern that should be weighed when it is built.
+
+---
+
 ## Code organization
 
 ### 5. Subfolders by domain inside `src/`
