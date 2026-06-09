@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi.responses import FileResponse
 
 from src import catalog, reports, runner, status
 from src.config import settings
@@ -88,6 +89,33 @@ def get_report(indicator_name: str) -> dict:
             status_code=404,
             detail=f"Unknown indicator '{indicator_name}'. Known: {catalog.all_names()}",
         )
+
+
+@app.get("/download/{indicator_name}")
+def download_indicator(
+    indicator_name: str,
+    _: Annotated[None, Depends(verify_worker_secret)],
+) -> FileResponse:
+    """Stream one indicator's parquet as a file download (requires X-Worker-Secret)."""
+    try:
+        entry = catalog.get(indicator_name)
+    except KeyError:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown indicator '{indicator_name}'. Known: {catalog.all_names()}",
+        )
+    path = storage.get_indicator_path(indicator_name, entry["provider"])
+    if not path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Indicator '{indicator_name}' has not been produced yet. Run an update first.",
+        )
+    logger.info(f"Download requested: '{indicator_name}'")
+    return FileResponse(
+        path=path,
+        media_type="application/octet-stream",
+        filename=f"{indicator_name}.parquet",
+    )
 
 
 @app.post("/run-update/{indicator_name}")
