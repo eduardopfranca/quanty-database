@@ -7,10 +7,10 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
 
-from src import catalog, reports, runner, status
+from src import catalog, downloads, reports, runner, status
 from src.config import settings
 from src.data import storage
 from src.logger import get_logger
@@ -115,6 +115,33 @@ def download_indicator(
         path=path,
         media_type="application/octet-stream",
         filename=f"{indicator_name}.parquet",
+    )
+
+
+@app.get("/download-group/{group}")
+def download_group(
+    group: str,
+    background_tasks: BackgroundTasks,
+    _: Annotated[None, Depends(verify_worker_secret)],
+) -> FileResponse:
+    """Stream a zip of a group's parquets + manifest.json (requires X-Worker-Secret).
+
+    Groups: 'indicators' (raw_fundamental + derived) and 'macro'. Prices
+    (quotes) are not bundled — use GET /download/quotes.
+    """
+    try:
+        zip_path = downloads.build_group_zip(group)
+    except KeyError:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown group '{group}'. Known: {list(downloads.GROUPS)}",
+        )
+    logger.info(f"Group download: '{group}'")
+    background_tasks.add_task(zip_path.unlink)
+    return FileResponse(
+        path=zip_path,
+        media_type="application/zip",
+        filename=f"{group}.zip",
     )
 
 
