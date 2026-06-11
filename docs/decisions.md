@@ -179,6 +179,26 @@ The goal is to make the reasoning available to future contributors (including fu
 
 ---
 
+### 30. Grouped batch download by indicator kind
+
+**Context.** The standard consumer routine is to grab all the factor indicators, then prices, then macro references — not one file at a time. A batch endpoint should match this routine rather than expose an arbitrary list.
+
+**Options considered.**
+
+- One endpoint for all indicators at once (a single large zip).
+- User-defined selection: a request body lists which indicators to include.
+- Groups derived from catalog kinds, with a fixed mapping.
+
+**Decision.** `GET /download-group/{group}` zips a group's present parquets plus a `manifest.json` (each member's full status) and streams the result. Groups are derived from catalog kinds: `indicators` = `raw_fundamental` + `derived`; `macro` = `macro`. Prices (`quotes`, kind `raw_bulk`) are intentionally **not** bundled — `quotes` is large and already compressed; it is served directly via `GET /download/quotes`. The zip uses `ZIP_STORED` (parquets are already compressed internally, so re-deflating wastes CPU without shrinking the file). The temporary zip is cleaned up after the response via FastAPI `BackgroundTasks`. A separate path prefix (`/download-group/`) avoids routing collisions with `GET /download/{indicator_name}`. Requires `X-Worker-Secret`.
+
+**Trade-offs accepted.**
+
+- The `indicators` bundle is on the order of ~94 MB — a real transfer over the ngrok free tier, but accepted for the routine analyst workflow.
+- A custom/personalized batch (user picks indicators by hand) is a natural follow-on and is planned but not yet built. See Open items in the handoff.
+- Groups are hardcoded in `downloads.GROUPS`; adding a new kind requires updating that dict. Acceptable given the small, stable set of catalog kinds.
+
+---
+
 ## Code organization
 
 ### 5. Subfolders by domain inside `src/`
