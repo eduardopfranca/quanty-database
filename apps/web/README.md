@@ -1,36 +1,33 @@
-This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Quanty Database — frontend
 
-## Getting Started
+Next.js 14 (App Router) frontend for the Quanty Database internal tool. Proxies the local Python worker and provides a browser UI for status, reports, updates, and downloads.
 
-First, run the development server:
+## Running locally
 
 ```bash
+cd apps/web
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000). The worker must also be running (`python -m src.main` in `apps/worker/`) for the dashboard to load data.
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+## Environment variables
 
-This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-optimization) to automatically optimize and load Inter, a custom Google Font.
+| Variable     | Required | Description                                   |
+| ------------ | -------- | --------------------------------------------- |
+| `WORKER_URL` | Yes      | Base URL of the worker. `http://localhost:8000` for local dev. |
 
-## Learn More
+Copy `.env.example` to `.env.local` and fill in the values:
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+cp .env.example .env.local
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+`.env.local` is gitignored. Never commit real values.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js/) - your feedback and contributions are welcome!
+## Production (Vercel)
 
-## Deploy on Vercel
+Environment variables are set in the Vercel dashboard — there is no `.env` file in production. Set `WORKER_URL` to the ngrok static domain (e.g. `https://chowder-marathon-slapping.ngrok-free.dev`).
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
+Why the frontend has its own env files separate from the worker's root `.env`: see `docs/decisions.md` decision 31.

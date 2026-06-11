@@ -396,4 +396,20 @@ Tried on 2026-05-23. A Cloudflare Zero Trust account was created and a tunnel na
 - The catalog stores strings (method/normalizer names), resolved later via `getattr`/`importlib`, instead of direct function references. Deliberate: it keeps the module import-light and lets the bulk of indicators (raw fundamentals) be pure data rows, which is what scales.
 - Static config lives in code, so a non-dev cannot add an indicator. Acceptable: adding a derived needs code anyway, and the frontend gets the catalog via a worker endpoint, not by reading the file.
 - Multi-provider machinery (per-provider adapters, splitting into a `catalog/` package) is intentionally not built yet; the structure accommodates it without rework.
+
 ---
+
+## Frontend
+
+### 31. Frontend has its own env files, separate from the worker's root .env
+
+**Context.** The worker reads `.env` at the repo root (`VAROS_API_KEY`, `WORKER_SECRET`, `WORKER_DATA_DIR`, etc.). The Next.js frontend in `apps/web/` also needs configuration (`WORKER_URL` now; `WORKER_SECRET` later for authenticated endpoints). The question was whether the frontend should reuse the root `.env` or have its own.
+
+**Options considered.**
+
+- Reuse the root `.env` for both worker and frontend.
+- Give the frontend its own env files under `apps/web/`.
+
+**Decision.** The frontend has its own env files under `apps/web/`: `.env.local` (gitignored, local dev) and `.env.example` (committed template). Reasons: (1) Next.js only loads env files from its own project root (`apps/web/`) — it does not read the monorepo-root `.env` without extra machinery; (2) separation of concerns — the frontend has no business holding `VAROS_API_KEY` or `WORKER_DATA_DIR`; (3) production env vars on Vercel are set in the Vercel dashboard, read from no file at all. The frontend's source of truth is `apps/web/.env.local` (dev) + the Vercel dashboard (prod).
+
+**Trade-offs accepted.** `WORKER_SECRET` is duplicated across the worker's root `.env`, the frontend's env, and Vercel — consumed by different processes in different places. There is no single secrets source across a Python worker, a Next.js app, and Vercel without a secrets manager, which is overkill for a 3-user internal tool.
