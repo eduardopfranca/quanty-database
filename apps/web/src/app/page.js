@@ -119,6 +119,32 @@ export default function Home() {
         </div>
       </div>
 
+      <div className="mb-6">
+        <div className="flex gap-3">
+          <a
+            href="/api/download-group/indicators"
+            className="px-3 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-50 transition-colors"
+          >
+            Indicators
+          </a>
+          <a
+            href="/api/download/quotes"
+            className="px-3 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-50 transition-colors"
+          >
+            Prices (quotes)
+          </a>
+          <a
+            href="/api/download-group/macro"
+            className="px-3 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-50 transition-colors"
+          >
+            Macro
+          </a>
+        </div>
+        <p className="mt-2 text-xs text-gray-400">
+          Downloads require the worker and tunnel to be running. Indicators ≈ 94 MB, Prices is large.
+        </p>
+      </div>
+
       {error && (
         <div className="rounded border border-red-200 bg-red-50 p-4 text-sm text-red-700 mb-6">
           <strong>Worker unreachable.</strong> Make sure it&apos;s running on{' '}
@@ -150,23 +176,22 @@ export default function Home() {
             <tbody>
               {data.map((ind) => {
                 const rs = rowState[ind.name] || { status: 'idle', message: '' };
+                const muted = !ind.present ? 'opacity-40' : '';
                 return (
                   <tr
                     key={ind.name}
-                    className={`border-b border-gray-100 last:border-0 ${
-                      !ind.present ? 'opacity-40' : 'hover:bg-gray-50'
-                    }`}
+                    className="border-b border-gray-100 last:border-0 hover:bg-gray-50"
                   >
-                    <td className="px-4 py-2.5 font-mono font-medium text-gray-900">{ind.name}</td>
-                    <td className="px-4 py-2.5 text-gray-600">{ind.provider}</td>
-                    <td className="px-4 py-2.5 text-gray-600">{KIND_LABELS[ind.kind] ?? ind.kind}</td>
-                    <td className="px-4 py-2.5 text-gray-700">{ind.present ? 'Yes' : 'No'}</td>
-                    <td className="px-4 py-2.5">
+                    <td className={`px-4 py-2.5 font-mono font-medium text-gray-900 ${muted}`}>{ind.name}</td>
+                    <td className={`px-4 py-2.5 text-gray-600 ${muted}`}>{ind.provider}</td>
+                    <td className={`px-4 py-2.5 text-gray-600 ${muted}`}>{KIND_LABELS[ind.kind] ?? ind.kind}</td>
+                    <td className={`px-4 py-2.5 text-gray-700 ${muted}`}>{ind.present ? 'Yes' : 'No'}</td>
+                    <td className={`px-4 py-2.5 ${muted}`}>
                       <FreshBadge fresh={ind.present ? ind.fresh : undefined} />
                     </td>
-                    <td className="px-4 py-2.5 text-gray-700 tabular-nums">{formatDate(ind.last_date)}</td>
-                    <td className="px-4 py-2.5 text-gray-700 text-right tabular-nums">{formatRows(ind.rows)}</td>
-                    <td className="px-4 py-2.5 text-gray-500">{formatUpdatedAt(ind.updated_at)}</td>
+                    <td className={`px-4 py-2.5 text-gray-700 tabular-nums ${muted}`}>{formatDate(ind.last_date)}</td>
+                    <td className={`px-4 py-2.5 text-gray-700 text-right tabular-nums ${muted}`}>{formatRows(ind.rows)}</td>
+                    <td className={`px-4 py-2.5 text-gray-500 ${muted}`}>{formatUpdatedAt(ind.updated_at)}</td>
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-2">
                         <button
