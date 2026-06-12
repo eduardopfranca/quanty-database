@@ -45,7 +45,8 @@ def compute(quotes: pd.DataFrame) -> pd.DataFrame:
         (positive number; higher = higher risk).
     """
     df = quotes[["date", "ticker", "close_adjusted"]].copy()
-    df["return"] = df.groupby("ticker")["close_adjusted"].pct_change()
+    df["close_adjusted"] = df.groupby("ticker")["close_adjusted"].ffill()
+    df["return"] = df.groupby("ticker")["close_adjusted"].pct_change(fill_method=None)
 
     # Legacy behavior: treat zero and infinite returns as missing.
     df.loc[df["return"] == 0, "return"] = pd.NA
@@ -69,7 +70,7 @@ def compute(quotes: pd.DataFrame) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-    quotes = storage.load_indicator("quotes")
+    quotes = storage.load_indicator("quotes", "varos")
     result = compute(quotes)
     print(result)
     print(f"\nRows: {len(result)}")

@@ -36,7 +36,8 @@ def compute(quotes: pd.DataFrame) -> pd.DataFrame:
     df = quotes[["date", "ticker", "close_adjusted"]].copy()
 
     periods = MONTHS * TRADING_DAYS_PER_MONTH
-    df["value"] = df.groupby("ticker")["close_adjusted"].pct_change(periods=periods)
+    df["close_adjusted"] = df.groupby("ticker")["close_adjusted"].ffill()
+    df["value"] = df.groupby("ticker")["close_adjusted"].pct_change(periods=periods, fill_method=None)
 
     # Legacy behavior: treat zero and infinite returns as missing.
     df.loc[df["value"] == 0, "value"] = pd.NA
@@ -47,7 +48,7 @@ def compute(quotes: pd.DataFrame) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-    quotes = storage.load_indicator("quotes")
+    quotes = storage.load_indicator("quotes", "varos")
     result = compute(quotes)
     print(result)
     print(f"\nRows: {len(result)}")
