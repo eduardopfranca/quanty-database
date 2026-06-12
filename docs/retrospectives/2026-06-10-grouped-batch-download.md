@@ -2,7 +2,6 @@
 session: 2026-06-11
 slug: grouped-batch-download
 ---
-
 ## Context at start
 
 Phase 3.7a (single-indicator download, `GET /download/{name}`) was complete. The declared next step was Phase 3.7b: a batch/bundle download endpoint. Open question: how to group, and what to do about `quotes` (hundreds of MB, already compressed).
