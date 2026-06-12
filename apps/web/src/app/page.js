@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 
 const KIND_LABELS = {
   macro: 'macro',
@@ -42,12 +42,90 @@ function formatRows(n) {
   return n.toLocaleString();
 }
 
+// General number formatter: integers use toLocaleString(); floats show up to 4 decimal places.
+function fmt(n) {
+  if (n == null) return '—';
+  if (Number.isInteger(n)) return n.toLocaleString();
+  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+}
+
+function StatRow({ label, value }) {
+  return (
+    <div className="flex justify-between gap-4">
+      <dt className="text-gray-400 whitespace-nowrap">{label}</dt>
+      <dd className="text-gray-700 tabular-nums text-right">{value}</dd>
+    </div>
+  );
+}
+
+function ReportPanel({ reportState }) {
+  if (!reportState || reportState.loading) {
+    return <p className="text-sm text-gray-400">Loading report…</p>;
+  }
+  if (reportState.error) {
+    return <p className="text-sm text-red-500">{reportState.error}</p>;
+  }
+  const r = reportState.data;
+  if (!r) return null;
+  if (!r.present) {
+    return <p className="text-sm text-gray-400">Indicator not yet produced — run an update first.</p>;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-8 text-xs">
+      {/* Date span */}
+      <div className="min-w-[140px]">
+        <p className="font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Date span</p>
+        <dl className="space-y-1">
+          <StatRow label="First" value={r.first_date ?? '—'} />
+          <StatRow label="Last" value={r.last_date ?? '—'} />
+          <StatRow label="Days" value={fmt(r.n_days)} />
+          <StatRow label="Rows" value={fmt(r.rows)} />
+        </dl>
+      </div>
+
+      {/* Ticker stats — only when has_tickers */}
+      {r.has_tickers && (
+        <div className="min-w-[160px]">
+          <p className="font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Tickers</p>
+          <dl className="space-y-1">
+            <StatRow label="Total distinct" value={fmt(r.tickers_total)} />
+            <StatRow label="Mean / day" value={r.tickers_mean_per_day != null ? String(r.tickers_mean_per_day) : '—'} />
+            <StatRow label="Median / day" value={fmt(r.tickers_median_per_day)} />
+            <StatRow label="Last day" value={fmt(r.tickers_last_day)} />
+          </dl>
+        </div>
+      )}
+
+      {/* Value stats */}
+      <div className="min-w-[160px]">
+        <p className="font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+          {r.value_column ? `Values (${r.value_column})` : 'Values'}
+        </p>
+        {r.value_column ? (
+          <dl className="space-y-1">
+            <StatRow label="Min" value={fmt(r.value_min)} />
+            <StatRow label="Max" value={fmt(r.value_max)} />
+            <StatRow label="Mean" value={fmt(r.value_mean)} />
+            <StatRow label="Median" value={fmt(r.value_median)} />
+            <StatRow label="Nulls" value={fmt(r.value_nulls)} />
+          </dl>
+        ) : (
+          <p className="text-gray-400 italic">No single value column (multiple numeric columns)</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [force, setForce] = useState(false);
   const [rowState, setRowState] = useState({});
+  const [expanded, setExpanded] = useState({});
+  const [reportCache, setReportCache] = useState({});
 
   async function load() {
     setLoading(true);
@@ -85,6 +163,30 @@ export default function Home() {
       }
     } catch {
       setRowState((prev) => ({ ...prev, [name]: { status: 'error', message: 'request failed' } }));
+    }
+  }
+
+  async function fetchReport(name) {
+    setReportCache((prev) => ({ ...prev, [name]: { loading: true, data: null, error: null } }));
+    try {
+      const res = await fetch(`/api/report/${name}`);
+      const body = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setReportCache((prev) => ({ ...prev, [name]: { loading: false, data: body, error: null } }));
+      } else {
+        const msg = body.detail || body.error || `HTTP ${res.status}`;
+        setReportCache((prev) => ({ ...prev, [name]: { loading: false, data: null, error: msg } }));
+      }
+    } catch {
+      setReportCache((prev) => ({ ...prev, [name]: { loading: false, data: null, error: 'request failed' } }));
+    }
+  }
+
+  function toggleReport(name) {
+    const willOpen = !expanded[name];
+    setExpanded((prev) => ({ ...prev, [name]: !prev[name] }));
+    if (willOpen && !reportCache[name]) {
+      fetchReport(name);
     }
   }
 
@@ -177,42 +279,58 @@ export default function Home() {
               {data.map((ind) => {
                 const rs = rowState[ind.name] || { status: 'idle', message: '' };
                 const muted = !ind.present ? 'opacity-40' : '';
+                const isExpanded = !!expanded[ind.name];
                 return (
-                  <tr
-                    key={ind.name}
-                    className="border-b border-gray-100 last:border-0 hover:bg-gray-50"
-                  >
-                    <td className={`px-4 py-2.5 font-mono font-medium text-gray-900 ${muted}`}>{ind.name}</td>
-                    <td className={`px-4 py-2.5 text-gray-600 ${muted}`}>{ind.provider}</td>
-                    <td className={`px-4 py-2.5 text-gray-600 ${muted}`}>{KIND_LABELS[ind.kind] ?? ind.kind}</td>
-                    <td className={`px-4 py-2.5 text-gray-700 ${muted}`}>{ind.present ? 'Yes' : 'No'}</td>
-                    <td className={`px-4 py-2.5 ${muted}`}>
-                      <FreshBadge fresh={ind.present ? ind.fresh : undefined} />
-                    </td>
-                    <td className={`px-4 py-2.5 text-gray-700 tabular-nums ${muted}`}>{formatDate(ind.last_date)}</td>
-                    <td className={`px-4 py-2.5 text-gray-700 text-right tabular-nums ${muted}`}>{formatRows(ind.rows)}</td>
-                    <td className={`px-4 py-2.5 text-gray-500 ${muted}`}>{formatUpdatedAt(ind.updated_at)}</td>
-                    <td className="px-4 py-2.5">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => runUpdate(ind.name)}
-                          disabled={rs.status === 'running'}
-                          className="px-2.5 py-1 text-xs rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50 transition-colors whitespace-nowrap"
-                        >
-                          {rs.status === 'running' ? 'Updating…' : 'Update'}
-                        </button>
-                        {rs.message && (
-                          <span
-                            className={`text-xs ${
-                              rs.status === 'error' ? 'text-red-600' : 'text-green-700'
-                            }`}
+                  <Fragment key={ind.name}>
+                    <tr className="border-b border-gray-100 hover:bg-gray-50">
+                      <td className={`px-4 py-2.5 font-mono font-medium text-gray-900 ${muted}`}>{ind.name}</td>
+                      <td className={`px-4 py-2.5 text-gray-600 ${muted}`}>{ind.provider}</td>
+                      <td className={`px-4 py-2.5 text-gray-600 ${muted}`}>{KIND_LABELS[ind.kind] ?? ind.kind}</td>
+                      <td className={`px-4 py-2.5 text-gray-700 ${muted}`}>{ind.present ? 'Yes' : 'No'}</td>
+                      <td className={`px-4 py-2.5 ${muted}`}>
+                        <FreshBadge fresh={ind.present ? ind.fresh : undefined} />
+                      </td>
+                      <td className={`px-4 py-2.5 text-gray-700 tabular-nums ${muted}`}>{formatDate(ind.last_date)}</td>
+                      <td className={`px-4 py-2.5 text-gray-700 text-right tabular-nums ${muted}`}>{formatRows(ind.rows)}</td>
+                      <td className={`px-4 py-2.5 text-gray-500 ${muted}`}>{formatUpdatedAt(ind.updated_at)}</td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            onClick={() => runUpdate(ind.name)}
+                            disabled={rs.status === 'running'}
+                            className="px-2.5 py-1 text-xs rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50 transition-colors whitespace-nowrap"
                           >
-                            {rs.message}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
+                            {rs.status === 'running' ? 'Updating…' : 'Update'}
+                          </button>
+                          {ind.present && (
+                            <button
+                              onClick={() => toggleReport(ind.name)}
+                              className="px-2.5 py-1 text-xs rounded border border-gray-300 hover:bg-gray-50 transition-colors whitespace-nowrap"
+                            >
+                              {isExpanded ? 'Hide' : 'Report'}
+                            </button>
+                          )}
+                          {rs.message && (
+                            <span
+                              className={`text-xs ${
+                                rs.status === 'error' ? 'text-red-600' : 'text-green-700'
+                              }`}
+                            >
+                              {rs.message}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+
+                    {isExpanded && (
+                      <tr className="border-b border-gray-100 bg-gray-50">
+                        <td colSpan={9} className="px-6 py-4">
+                          <ReportPanel reportState={reportCache[ind.name]} />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })}
             </tbody>
