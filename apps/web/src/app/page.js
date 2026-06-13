@@ -243,7 +243,7 @@ export default function Home() {
           </a>
         </div>
         <p className="mt-2 text-xs text-gray-400">
-          Downloads require the worker and tunnel to be running. Indicators ≈ 94 MB, Prices is large.
+          If you receive an HTTP 504 error, please wait a few minutes for the service to start on the server, then refresh the page.
         </p>
       </div>
 
